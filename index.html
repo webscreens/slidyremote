@@ -32,9 +32,9 @@
       <div class="form">
         <form class="pure-form pure-form-stacked">
           <label for="url">URL of the Slidy presentation to project:</label>
-          <input id="url" name="url" type="text" value="https://tidoust.github.io/slidyremote/slideshow/" list="talks" class="pure-input-1"/>
+          <input id="url" name="url" type="text" value="https://webscreens.github.io/slidyremote/slideshow/" list="talks" class="pure-input-1"/>
           <datalist id="talks">
-            <option value="https://tidoust.github.io/slidyremote/slideshow/" />
+            <option value="https://webscreens.github.io/slidyremote/slideshow/" />
             <option value="https://www.w3.org/Talks/Tools/Slidy2/" />
             <option value="http://www.w3.org/2011/Talks/1122-mwabp-epita-fd/" />
             <option value="http://www.w3.org/2009/Talks/03-mobileinternet/" />
@@ -50,7 +50,7 @@
         <p>Instructions:</p>
         <ol>
           <li><strong>Enter the URL of a slide show</strong> made with <a href="http://www.w3.org/Talks/Tools/Slidy2/Overview.html">HTML Slidy</a> above.
-            <br/>The slide show origin must be one of <code>http(s)://www.w3.org</code> or <code>https://tidoust.github.io</code>.</li>
+            <br/>The slide show origin must be one of <code>http(s)://www.w3.org</code> or <code>https://webscreens.github.io</code>.</li>
           <li><strong>Hit "<em>Open slide show</em>"</strong>
             <br/>The slide show will open on a second screen if available or in a separate window otherwise.
             <br/>Ensure this page is allowed to open pop-up windows!</li>
@@ -71,7 +71,7 @@
       <section id="implementation">
         <h2>Implementation details</h2>
 
-        <p>The <a href="http://github.com/tidoust/slidyremote">source code</a> is available on GitHub under a <a href="http://www.w3.org/Consortium/Legal/2002/copyright-software-20021231">W3C Software license</a>.</p>
+        <p>The <a href="http://github.com/webscreens/slidyremote">source code</a> is available on GitHub under a <a href="http://www.w3.org/Consortium/Legal/2002/copyright-software-20021231">W3C Software license</a>.</p>
 
         <h3>Presentation API shim</h3>
         <p>Under the hoods, the demo uses a <a href="presentation-api-shim.js">JavaScript shim</a> of the Presentation API that supports:</p>
@@ -98,7 +98,7 @@
 
         <p>Due to usual security restrictions, the origins of the HTML Slidy receiver application and of the slide show <strong>must</strong> match. The receiver application would not be able to control the slide show otherwise. This page only knows of two HTML Slidy receiver applications:</p>
         <ul>
-          <li>The receiver that ships with this page, bound to <code>https://tidoust.github.io</code></li>
+          <li>The receiver that ships with this page, bound to <code>https://webscreens.github.io</code></li>
           <li>A receiver that runs on the W3C Web site, bound to <code>https://www.w3.org</code></li>
         </ul>
         <p>You may extend the code to support receiver applications on other domain names. Both HTML Slidy receiver applications have been registered with Google and may run on any Chromecast device.</li>
@@ -121,7 +121,7 @@
         <h3>Contact</h3>
         <p>For feedback on the demo or on the Presentation API itself, use the <a href="mailto:public-webscreens@w3.org">public-webscreens@w3.org</a> mailing-list (with <a href="http://lists.w3.org/Archives/Public/public-webscreens">public archive</a>) or get in touch with <a href="mailto:fd@w3.org">Francois Daoust</a> if you do not wish your comment to appear in public.</p>
 
-        <p>Feel free to use <a href="http://github.com/tidoust/slidyremote/issues">GitHub issue tracker</a> to report bugs and feature requests.</p>
+        <p>Feel free to use <a href="http://github.com/webscreens/slidyremote/issues">GitHub issue tracker</a> to report bugs and feature requests.</p>
 
         <h3>Acknowledgements</h3>
         <p>This work was done with support from the European Commission under grant agreement no: 610404 (<a href="http://www.mediascapeproject.eu/">MediaScape</a>).</p>

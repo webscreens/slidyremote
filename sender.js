@@ -28,6 +28,11 @@ window.onload = function () {
       castId: '06F76BDC'
     },
     {
+      origin: 'https://webscreens.github.io',
+      url: 'https://webscreens.github.io/slidyremote/receiver.html',
+      castId: '673D55D4'
+    },
+    {
       origin: 'https://tidoust.github.io',
       url: 'https://tidoust.github.io/slidyremote/receiver.html',
       castId: 'AA65CCFD'
@@ -118,7 +123,7 @@ window.onload = function () {
     if (!receiverApp) {
       reportError('No HTML Slidy receiver application known for the origin "' +
         url.hostname + '". The demo is typically limited to the origins ' +
-        '<code>https://www.w3.org</code> and <code>https://tidoust.github.io</code>');
+        '<code>https://www.w3.org</code> and <code>https://webscreens.github.io</code>');
       return false;
     }
     console.log('Using receiver app "' + receiverApp.url + '" ' +
