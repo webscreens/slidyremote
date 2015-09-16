@@ -1,4 +1,9 @@
 /**
+ * Pointer to the projected slide show if there is one
+ */
+var presentationConnection = null;
+
+/**
  * @fileOverview Code needed by the HTML Slidy receiver application to
  * listen to messages from the presentation sender and react accordingly,
  * dispatching received commands to the controlled slide show.
@@ -18,13 +23,13 @@ window.onload = function () {
   };
 
   /**
-   * React to the establishment of a new session
+   * React to the establishment of a new connection
    */
-  navigator.presentation.onpresent = function (event) {
-    var presentationSession = event.session;
-
-    presentationSession.onmessage = function (message) {
+  navigator.w3cPresentation.receiver.getConnection().then(function (connection) {
+    presentationConnection = connection;
+    connection.onmessage = function (event) {
       var params = null;
+      var message = event.data;
       if (!message || !message.cmd) {
         return;
       }
@@ -41,5 +46,5 @@ window.onload = function () {
         controlledSlidy[message.cmd].apply(controlledSlidy, params);
       }
     };
-  };
+  });
 };

@@ -1,10 +1,11 @@
+<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf8" />
     <title>HTML Slidy remote</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="stylesheet" href="http://yui.yahooapis.com/pure/0.5.0/pure-min.css" />
-    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" />
+    <link rel="stylesheet" href="pure-min.css" />
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.1.0/css/font-awesome.min.css" />
     <link rel="stylesheet" href="styles.css" />
     <!--
       Note the order of the scripts is relevant:
@@ -14,7 +15,7 @@
     <script type="text/javascript" src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js"></script>
     <script type="text/javascript">navigator.presentationLogLevel = 'log';</script>
     <script type="text/javascript" src="presentation-api-shim.js"></script>
-    <script type="text/javascript" src="http://www.w3.org/Talks/Tools/Slidy2/scripts/slidy.js"></script>
+    <script type="text/javascript" src="https://www.w3.org/Talks/Tools/Slidy2/scripts/slidy.js"></script>
     <script type="text/javascript" src="slidy-remote.js"></script>
     <script type="text/javascript" src="sender.js"></script>
   </head>
@@ -90,11 +91,13 @@
           <dd>Note that your Web browser is likely going to block this attempt to open a pop-up window by default! It should offer a way to authorize it though.</dd>
         </dl>
 
+        <p><strong>NB:</strong> The shim uses a <code>w3c</code> prefix for interfaces exposed on <code>navigator</code> and <code>window</code>: <code>navigator.w3cPresentation</code> and <code>w3cPresentationRequest</code>.</p>
+
         <h3>How the demo works</h3>
 
-        <p>When the user requests to present the given slide show, this page calls <code>navigator.presentation.requestSession</code> to open the appropriate HTML Slidy receiver application on a second screen. The call returns a <code>PresentationSession</code> object. The page then uses that object to have the HTML Slidy receiver application open the requested slide show and to send Slidy commands afterwards.</p>
+        <p>When the user requests to present the given slide show, this page creates a <code>PresentationRequest</code> and starts it to open the appropriate HTML Slidy receiver application on a second screen. The call returns a <code>PresentationConnection</code> object. The page then uses that object to have the HTML Slidy receiver application open the requested slide show and to send Slidy commands afterwards.</p>
 
-        <p>The HTML Slidy receiver application is an empty page that listens to messages it receives from <code>navigator.presentation.onmessage</code>. When it receives the appropriate message, it loads the requested slide show in a child <code>iframe</code> that takes up 100% of the viewport and controls the Slidy instance of the slide show within that iframe in reaction to further presentation messages it receives.</p>
+        <p>The HTML Slidy receiver application is an empty page that retrieves the first incoming presentation connection using <code>navigator.w3cPresentation.receiver.getConnection()</code> and listens to <code>message</code> events on that connection. When it receives the appropriate message, it loads the requested slide show in a child <code>iframe</code> that takes up 100% of the viewport and controls the Slidy instance of the slide show within that iframe in reaction to further presentation messages it receives.</p>
 
         <p>Due to usual security restrictions, the origins of the HTML Slidy receiver application and of the slide show <strong>must</strong> match. The receiver application would not be able to control the slide show otherwise. This page only knows of two HTML Slidy receiver applications:</p>
         <ul>
@@ -104,7 +107,7 @@
         <p>You may extend the code to support receiver applications on other domain names. Both HTML Slidy receiver applications have been registered with Google and may run on any Chromecast device.</li>
 
         <h3>Why use an iframe on the receiving side?</h3>
-        <p>Since the <code>iframe</code> triggers the same origin constraint, it would be tempting to drop it altogether. It could be done in theory provided HTML Slidy is updated to listen to <code>navigator.presentation.onmessage</code> events.</p>
+        <p>Since the <code>iframe</code> triggers the same origin constraint, it would be tempting to drop it altogether. It could be done in theory provided HTML Slidy is updated to retrieve the right incoming connection and listen to <code>message</code> events.</p>
 
         <p>In practice, this would require slide shows to use that updated (and likely unstable) version of HTML Slidy, which is probably not a good idea for <em>actual</em> slide shows. Also note that there is no way to run arbitrary receiver applications with Google Cast devices for the time being: any receiver application must first be registered with Google. Having to register all existing slide shows would be somewhat tedious.</p>
 

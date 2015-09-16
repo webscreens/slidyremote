@@ -1,8 +1,8 @@
 /**
  * @fileOverview The Slidy remote overwrites all commands of a locally running
- * instance of Slidy to have these commands sent to some presentation session,
+ * instance of Slidy to have these commands sent to some presentation,
  * effectively turning the Slidy library into a Slidy remote library (provided
- * the presentation session implements the slidy-receiver interface to pass
+ * the presentation connection implements the slidy-receiver interface to pass
  * on the commands received to an underlying slide show).
  */
 (function () {
@@ -13,12 +13,12 @@
 
 
   /**
-   * Presentation session that the Slidy remote is to control
-   * (set with a call to "bindToPresentationSession")
+   * Presentation connection that the Slidy remote is to control
+   * (set with a call to "bindToPresentationConnection")
    *
-   * @type {PresentationSession}
+   * @type {PresentationConnection}
    */
-  var presentationSession = null;
+  var presentationConnection = null;
 
 
   /**
@@ -36,19 +36,19 @@
 
 
   /**
-   * Binds Slidy commands to the given PresentationSession
+   * Binds Slidy commands to the given PresentationConnection
    *
-   * All Slidy commands will be sent to that session from now on, if possible
-   * (meaning if the session is not "disconnected").
+   * All Slidy commands will be sent to that connection from now on, if
+   * possible (meaning if the connection is not "disconnected").
    *
-   * The presentation session should run slidy receiver code to be able to pass
-   * the commands it receives to its underlying slide show.
+   * The presentation connection should run slidy receiver code to be able to
+   * pass the commands it receives to its underlying slide show.
    *
    * @function
-   * @param {PresentationSession} session The presentation session to control
+   * @param {PresentationConnection} connection The connection to control
    */
-  window.w3c_slidy.bindToPresentationSession = function (session) {
-    presentationSession = session;
+  window.w3c_slidy.bindToPresentationConnection = function (connection) {
+    presentationConnection = connection;
 
     this.add_listener(document, 'keydown', this.key_down);
     this.add_listener(document, 'keypress', this.key_press);
@@ -79,19 +79,19 @@
    *
    * @function
    * @param {String} url URL of the slide show to load onto the presentation
-   *  session
+   *  connection
    */
   window.w3c_slidy.loadSlideshow = function (url) {
     slideshowLoaded = false;
-    if (presentationSession && (presentationSession.state === 'connected')) {
-      presentationSession.postMessage({
+    if (presentationConnection && (presentationConnection.state === 'connected')) {
+      presentationConnection.send({
         cmd: 'open',
         url: url
       });
       slideshowLoaded = true;
     }
     else {
-      console.warn('No presentation session to control, ' +
+      console.warn('No presentation connection to control, ' +
         'cannot load slideshow at "' + url + '"');
     }
   };
@@ -99,13 +99,14 @@
 
   /**
    * Prepare a function that turns a regular Slidy command into a command sent
-   * to the presentation session controlled by this Slidy remote, if possible
+   * to the presentation connection controlled by this Slidy remote, if
+   * possible
    *
    * @function
    * @param {String} cmd The Slidy command to convert
    * @return {function} The Slidy function that should replace the default one.
    *   When called, that function sends the appropriate command to the
-   *   underlying presentation session
+   *   underlying presentation connection
    */
   var toPresentationCommand = function (cmd) {
     return function () {
@@ -115,20 +116,20 @@
       if (arguments.length > 0) {
         message.params = Array.prototype.slice.call(arguments);
       }
-      if (presentationSession &&
-          (presentationSession.state === 'connected') &&
+      if (presentationConnection &&
+          (presentationConnection.state === 'connected') &&
           slideshowLoaded) {
-        presentationSession.postMessage(message);
+        presentationConnection.send(message);
       }
       else {
-        console.warn('No presentation session to control, ' +
+        console.warn('No presentation connection to control, ' +
           'cannot send Slidy command "' + cmd + '"');
       }
     };
   };
 
 
-  // Overwrite commands of local Slidy instance to hit the presentation session.
+  // Overwrite commands of local Slidy instance to hit the presentation.
   [
     'hide_table_of_contents',
     'next_slide',

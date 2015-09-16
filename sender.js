@@ -1,4 +1,9 @@
 /**
+ * Pointer to the projected slide show if there is one
+ */
+var presentationConnection = null;
+
+/**
  * @fileOverview Code needed to run the HTML Slidy remote demo
  */
 window.onload = function () {
@@ -44,20 +49,14 @@ window.onload = function () {
     }
   ];
   receiverApps.forEach(function (app) {
-    navigator.presentation.registerCastApplication(app.url, app.castId);
+    navigator.w3cPresentation.registerCastApplication(app.url, app.castId);
   });
-
-
-  /**
-   * Pointer to the projected slide show if there is one
-   */
-  var presentationSession = null;
 
 
   /**
    * Whether the slide show has been projected for real or not
    */
-  var presentationSessionConnected = false;
+  var presentationConnected = false;
 
 
   /**
@@ -90,9 +89,11 @@ window.onload = function () {
   submitButton.addEventListener('click', function (event) {
     event.preventDefault();
 
-    if (presentationSession) {
+    if (presentationConnection &&
+        (presentationConnection.state === 'connected')) {
       return false;
     }
+    presentationConnection = null;
 
     // Automatically convert http://www.w3.org into https://www.w3.org URLs
     var enteredUrl = document.querySelector('#url').value;
@@ -133,40 +134,43 @@ window.onload = function () {
     // device if one is available, an attached screen if the user uses the
     // appropriate custom Google Chrome build, falling back to a separate
     // window if possible.
-    presentationSession = navigator.presentation.requestSession(receiverApp.url);
-    presentationSessionConnected = false;
+    var presentationRequest = new w3cPresentationRequest(receiverApp.url);
+    presentationRequest.start().then(function (connection) {
+      presentationConnection = connection;
+      presentationConnected = false;
 
-    // Tell our Slidy remote about the created presentation session so that
-    // local keystrokes effectively run the appropriate Slidy commands on the
-    // remote slide show.
-    window.w3c_slidy.bindToPresentationSession(presentationSession);
+      // Tell our Slidy remote about the created presentation connection so
+      // that local keystrokes effectively run the appropriate Slidy commands
+      // on the remote slide show.
+      window.w3c_slidy.bindToPresentationConnection(presentationConnection);
 
-    // Load the requested slideshow on the receiver end when the session
-    // is fully operational and reset things if the session is closed for
-    // some reason
-    presentationSession.onstatechange = function () {
-      if (this.state === 'connected') {
-        console.info('Presentation session connected');
-        presentationSessionConnected = true;
-        window.w3c_slidy.loadSlideshow(url.toString());
-        formSection.hidden = true;
-        remoteSection.hidden = false;
-      }
-      else {
-        console.warn('Presentation session disconnected');
-        if (!presentationSessionConnected) {
-          reportError('The presentation session could not be created.' +
-            ' Your browser may have blocked the pop-up window.' +
-            ' Please ensure that the page is allowed to open pop-up windows' +
-            ' and try again.');
+      // Load the requested slideshow on the receiver end when the connection
+      // is fully operational and reset things if the connection is closed for
+      // some reason
+      presentationConnection.onstatechange = function () {
+        if (presentationConnection.state === 'connected') {
+          console.info('Presentation connected');
+          presentationConnected = true;
+          window.w3c_slidy.loadSlideshow(url.toString());
+          formSection.hidden = true;
+          remoteSection.hidden = false;
         }
-        presentationSession = null;
-        presentationSessionConnected = false;
-        window.w3c_slidy.closePresentation();
-        formSection.hidden = false;
-        remoteSection.hidden = true;
-      }
-    };
+        else {
+          console.warn('Presentation disconnected');
+          if (!presentationConnected) {
+            reportError('The presentation connection could not be created.' +
+              ' Your browser may have blocked the pop-up window.' +
+              ' Please ensure that the page is allowed to open pop-up windows' +
+              ' and try again.');
+          }
+          presentationConnected = false;
+          window.w3c_slidy.closePresentation();
+          formSection.hidden = false;
+          remoteSection.hidden = true;
+        }
+      };
+
+    });
 
     return false;
   });
@@ -176,10 +180,10 @@ window.onload = function () {
    * Event handler to close the presentation
    */
   var closePresentation = function (event) {
-    if (presentationSession) {
-      presentationSession.close();
-      presentationSession = null;
-      presentationSessionConnected = false;
+    if (presentationConnection) {
+      presentationConnection.close();
+      presentationConnection = null;
+      presentationConnected = false;
       window.w3c_slidy.closePresentation();
     }
     formSection.hidden = false;
