@@ -155,8 +155,14 @@ window.onload = function () {
           formSection.hidden = true;
           remoteSection.hidden = false;
         }
-        else {
+        else if (presentationConnection.state === 'disconnected') {
           console.warn('Presentation disconnected');
+          window.w3c_slidy.closePresentation();
+          formSection.hidden = false;
+          remoteSection.hidden = true;
+        }
+        else if (presentationConnection.state === 'terminated') {
+          console.warn('Presentation terminated');
           if (!presentationConnected) {
             reportError('The presentation connection could not be created.' +
               ' Your browser may have blocked the pop-up window.' +
@@ -181,7 +187,7 @@ window.onload = function () {
    */
   var closePresentation = function (event) {
     if (presentationConnection) {
-      presentationConnection.close();
+      presentationConnection.terminate();
       presentationConnection = null;
       presentationConnected = false;
       window.w3c_slidy.closePresentation();

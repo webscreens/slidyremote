@@ -150,33 +150,15 @@
 
 
     /**
-     * Open a data communication channel with the browsing context
-     *
-     * @function
-     * @return {Promise} The promise to have a data communication channel
-     * ready to be used for exchanging messaging with the browsing context
-     */
-    this.open = function () {
-      return new Promise(function (resolve, reject) {
-        if (that.state === 'closed') {
-          that.state = 'connected';
-          if (that.onstatechange) {
-            that.onstatechange();
-          }
-        }
-        resolve();
-      });
-    };
-
-
-    /**
      * Sends a message through the communication channel.
      *
      * @function
      * @param {*} message
      */
     this.send = function (message) {
-      throw new _DOMException('InvalidStateError');
+      if (that.state !== 'connected') {
+        throw new _DOMException('InvalidStateError');
+      }
     };
 
 
@@ -210,19 +192,44 @@
    * A remote controller represents a controlling browsing context as seen
    * from the receiving browsing context.
    *
-   * This base class is an empty shell and is actually the same thing as the
-   * DataChannel interface. It comes with a new name because DataChannel is
-   * also inherited by the RemoteDisplay interface and it would not make much
-   * sense for RemoteDisplay to inherit from RemoteController.
-   *
-   * Presentation mechanisms should provide their own RemoteController
-   * interface that inherits from this one.
+   * This base class is an empty shell. Presentation mechanisms should provide
+   * their own RemoteController interface that inherits from this one and
+   * retrieves the right data channel.
    *
    * @constructor
    * @private
    * @param {String} name A human-friendly name to identify the context
    */
-  var RemoteController = DataChannel;
+  var RemoteController = function () {
+    /**
+     * The underlying data channel used to communicate with the display
+     *
+     * @type {DataChannel}
+     * @private
+     */
+    var channel = null;
+
+    /**
+     * Retrieve the data channel with the remote browsing context
+     *
+     * Note the shim only calls that function once (or rather each time the
+     * data channel needs to be re-created), so no need to worry about
+     * returning the same Promise if the function is called multiple times.
+     *
+     * @function
+     * @return {Promise<DataChannel>} The promise to get a data communication
+     * channel ready for exchanging messages with the remote controller
+     */
+    this.createDataChannel = function () {
+      return new Promise(function (resolve, reject) {
+        if (!channel) {
+          channel = new DataChannel();
+          channel.state = 'connected';
+        }
+        resolve(channel);
+      });
+    };
+  };
 
 
   /**
@@ -236,8 +243,6 @@
    * @param {String} name A human-friendly name to identify the context
    */
   var Display = function (name) {
-    DataChannel.call(this);
-
     /**
      * A human-friendly name for the display
      *
@@ -260,6 +265,34 @@
         reject(new _DOMException('OperationError'));
       });
     };
+
+
+    /**
+     * Create a data channel with the remote browsing context
+     *
+     * Note the shim only calls that function once (or rather each time the
+     * data channel needs to be re-created), so no need to worry about
+     * returning the same Promise if the function is called multiple times.
+     *
+     * @function
+     * @return {Promise<DataChannel>} The promise to get a data communication
+     * channel ready for exchanging messages with the remote controller
+     */
+    this.createDataChannel = function () {
+      return new Promise(function (resolve, reject) {
+        if (!channel) {
+          channel = new DataChannel();
+          channel.state = 'connected';
+        }
+        resolve(channel);
+      });
+    };
+
+
+    /**
+     * Terminates the presentation with the display
+     */
+    this.terminate = function () {};
   };
 
 
@@ -389,48 +422,90 @@
     var castApplications = {};
 
 
-    var CastRemoteController = function (castReceiverManager) {
-      RemoteController.call(this);
+    /**
+     * A data channel
+     *
+     * @function
+     */
+    var CastDataChannel = function () {
+      DataChannel.call(this);
 
-      var that = this;
-      var customMessageBus = castReceiverManager.getCastMessageBus(
-        'urn:x-cast:org.w3c.webscreens.presentationapi.shim',
-        cast.receiver.CastMessageBus.MessageType.JSON);
-      customMessageBus.addEventListener('message', function (event) {
-        log('received message from Cast sender', event.data);
-        if (that.onmessage) {
-          that.onmessage(event);
-        }
-      });
 
-      this.send = function (message) {
-        if (that.state !== 'connected') {
-          throw new _DOMException('InvalidStateError');
-        }
-        log('send message to Cast sender', message);
-        customMessageBus.broadcast(message);
-      };
-
-      this.close = function () {
-        if (that.state !== 'connected') {
-          return;
-        }
-        log('stop Cast receiver manager');
-        castReceiverManager.stop();
-        that.state = 'closed';
-        if (that.onstatechange) {
-          that.onstatechange();
-        }
-      }
     };
 
 
+    /**
+     * Remote controller from the perspective of the Cast device
+     *
+     * @constructor
+     * @inherits {RemoteController}
+     * @param {cast.ReceiverManager} castReceiverManager The cast's receiver
+     * manager.
+     */
+    var CastRemoteController = function (castReceiverManager) {
+      RemoteController.call(this);
+
+      var customMessageBus = castReceiverManager.getCastMessageBus(
+        'urn:x-cast:org.w3c.webscreens.presentationapi.shim',
+        cast.receiver.CastMessageBus.MessageType.JSON);
+
+      this.createDataChannel = function () {
+        return new Promise(function (resolve, reject) {
+          var channel = new DataChannel();
+          channel.state = 'connected';
+
+          customMessageBus.addEventListener('message', function (event) {
+            log('received message from Cast sender', event.data);
+            if (channel.onmessage) {
+              channel.onmessage(event);
+            }
+          });
+
+          channel.send = function (message) {
+            if (channel.state !== 'connected') {
+              throw new _DOMException('InvalidStateError');
+            }
+            log('send message to Cast sender', message);
+            customMessageBus.broadcast(message);
+          };
+
+          channel.close = function () {
+            if (channel.state !== 'connected') {
+              return;
+            }
+            channel.state = 'closed';
+            if (channel.onstatechange) {
+              channel.onstatechange();
+            }
+          };
+
+          resolve(channel);
+        });
+      };
+
+      this.terminate = function () {
+        log('stop Cast receiver manager');
+        castReceiverManager.stop();
+      };
+    };
+
+
+    /**
+     * Represents a Chromecast device that may be navigated to a URL
+     *
+     * The class more accurately represents the possibility that the user
+     * will have a Chromecast device at hand that could be used to browse
+     * the requested URL. The actual device is not known a priori.
+     *
+     * @function
+     * @inherits {Display}
+     * @param {String} name A human-friendly name for the "device"
+     */
     var CastDisplay = function (name) {
       Display.call(this, name);
       this.state = 'closed';
 
       var castSession = null;
-      var that = this;
 
       this.navigate = function (url) {
         return new Promise(function (resolve, reject) {
@@ -529,62 +604,69 @@
       };
 
 
-      this.open = function () {
+      this.createDataChannel = function () {
         return new Promise(function (resolve, reject) {
           if (!castSession) {
             reject();
             return;
           }
-          if (that.state === 'connected') {
-            resolve();
-            return;
-          }
 
-          castSession.addUpdateListener(function (isAlive) {
-            that.state = isAlive ? 'connected' : 'closed';
+          var channel = new DataChannel();
+          channel.state = 'connected';
+
+          var updateListener = function () {
+            channel.state = (castSession === chrome.cast.SessionStatus.CONNECTED) ?
+              'connected' : 'closed';
             log('received Cast session state update', 'isAlive=' + isAlive);
-            if (that.onstatechange) {
-              that.onstatechange();
+            if (channel.onstatechange) {
+              channel.onstatechange();
             }
-          });
+            if (channel.state !== 'connected') {
+              castSession.removeMessageListener(messageListener);
+              castSession.removeUpdateListener(updateListener);
+            }
+          };
+
+          var messageListener = function (namespace, message) {
+            log('received message from Cast receiver', message);
+            if (channel.onmessage) {
+              channel.onmessage({ data: message });
+            }
+          };
 
           var namespace = castSession.namespaces[0];
-          castSession.addMessageListener(namespace.name, function (namespace, message) {
-            log('received message from Cast receiver', message);
-            if (that.onmessage) {
-              that.onmessage({ data: message });
-            }
-          });
+          castSession.addUpdateListener(updateListener);
+          castSession.addMessageListener(namespace.name, messageListener);
 
-          that.state = 'connected';
-          if (that.onstatechange) {
-            that.onstatechange();
-          }
-          resolve();
+          channel.send = function (message) {
+            if (channel.state !== 'connected') {
+              throw new _DOMException('InvalidStateError');
+            }
+            log('send message to Cast receiver', message);
+            var namespace = castSession.namespaces[0];
+            castSession.sendMessage(namespace.name, message);
+          };
+
+          channel.close = function () {
+            if (channel.state !== 'connected') {
+              return;
+            }
+            castSession.removeMessageListener(messageListener);
+            castSession.removeUpdateListener(updateListener);
+            channel.state = 'closed';
+            if (channel.onstatechange) {
+              channel.onstatechange();
+            }
+          };
+
+          resolve(channel);
         });
       };
 
 
-      this.send = function (message) {
-        if (that.state !== 'connected') {
-          throw new _DOMException('InvalidStateError');
-        }
-        log('send message to Cast receiver', message);
-        var namespace = castSession.namespaces[0];
-        castSession.sendMessage(namespace.name, message);
-      };
-
-
-      this.close = function () {
-        if (that.state !== 'connected') {
-          return;
-        }
+      this.terminate = function () {
         log('close Cast session');
         castSession.stop();
-        that.state = 'closed';
-        if (that.onstatechange) {
-          that.onstatechange();
-        }
       };
     };
 
@@ -682,27 +764,57 @@
      *
      * @constructor
      * @private
+     * @inherits {RemoteController}
      * @param {Window} source Reference to the controlling window
      */
     var WindowRemoteController = function (source) {
       RemoteController.call(this);
 
-      var that = this;
-      this.send = function (message) {
-        if (that.state !== 'connected') {
-          throw new _DOMException('InvalidStateError');
-        }
-        log('send message to receiving window', message);
-        source.postMessage(message, '*');
-      };
+      this.createDataChannel = function () {
+        return new Promise(function (resolve, reject) {
+          var channel = new DataChannel();
 
-      window.addEventListener('message', function (event) {
-        if (event.source === source) {
-          if (that.onmessage) {
-            that.onmessage(event);
-          }
-        }
-      });
+          var initMessageListener = function (event) {
+            if ((event.source === source) &&
+                (event.data === 'channel')) {
+              log('received message to start data channel');
+              channel.state = 'connected';
+              window.removeEventListener('message', initMessageListener);
+              window.addEventListener('message', messageListener);
+              source.postMessage('channelready', '*');
+              resolve(channel);
+            }
+          };
+          window.addEventListener('message', initMessageListener);
+
+          var messageListener = function (event) {
+            if (event.source === source) {
+              if (channel.onmessage) {
+                channel.onmessage(event);
+              }
+            }
+          };
+
+          channel.send = function (message) {
+            if (channel.state !== 'connected') {
+              throw new _DOMException('InvalidStateError');
+            }
+            log('send message to receiving window', message);
+            source.postMessage(message, '*');
+          };
+
+          channel.close = function () {
+            if (channel.state !== 'connected') {
+              return;
+            }
+            window.removeEventListener('message', messageListener);
+            channel.state = 'closed';
+            if (channel.onstatechange) {
+              channel.onstatechange();
+            }
+          };
+        });
+      };
     };
 
 
@@ -731,96 +843,82 @@
             reject(new _DOMException('OperationError'));
             return;
           }
-          window.addEventListener('message', function (event) {
-            if (that.state === 'closed') {
-              if ((event.source === receivingWindow) &&
-                  (event.data === 'ispresentation')) {
-                log('received "is this a presentation connection?" message ' +
-                  'from receiving window');
-                log('send "presentation" message to receiving window');
-                receivingWindow.postMessage('presentation', '*');
-              }
-              else if ((event.source === receivingWindow) &&
-                  (event.data === 'presentationready')) {
-                log('received "presentation ready" message ' +
-                  'from receiving window');
-                that.state = 'connected';
-                if (openPromiseResolve) {
-                  openPromiseResolve();
-                  openPromiseResolve = null;
-                  openPromiseReject = null;
-                }
-                if (that.onstatechange) {
-                  queueTask(function () {
-                    that.onstatechange();
-                  });
-                }
+          var isPresentationListener = function (event) {
+            if ((event.source === receivingWindow) &&
+                (event.data === 'ispresentation')) {
+              log('received "is this a presentation connection?" message ' +
+                'from receiving window');
+              log('send "presentation" message to receiving window');
+              receivingWindow.postMessage('presentation', '*');
+              window.removeEventListener('message', isPresentationListener);
+              resolve();
+            }
+          };
+          window.addEventListener('message', isPresentationListener);
+        });
+      };
+
+      this.createDataChannel = function () {
+        return new Promise(function (resolve, reject) {
+          var channel = new DataChannel();
+          channel.state = 'connected';
+
+          var readyMessageListener = function (event) {
+            if ((event.source === receivingWindow) &&
+                (event.data === 'channelready')) {
+              log('received "channel ready" message from receiving window');
+              channel.state = 'connected';
+              window.removeEventListener('message', readyMessageListener);
+              window.addEventListener('message', messageListener);
+              resolve(channel);
+            }
+          };
+
+          var messageListener = function (event) {
+            if ((event.source === receivingWindow) &&
+                (event.data === 'receivershutdown')) {
+              log('received shut down message from receiving side', 'disconnect');
+              channel.state = 'terminated';
+              if (channel.onstatechange) {
+                channel.onstatechange();
               }
             }
             else {
-              if ((event.source === receivingWindow) &&
-                  (event.data === 'receivershutdown')) {
-                log('received shut down message from receiving side', 'disconnect');
-                that.state = 'closed';
-                reconnectionNeeded = true;
-                if (openPromiseReject) {
-                  openPromiseReject();
-                  openPromiseResolve = null;
-                  openPromiseReject = null;
-                }
-                if (that.onstatechange) {
-                  queueTask(function () {
-                    that.onstatechange();
-                  });
-                }
-              }
-              else {
-                log('received message from receiving window', event.data);
-                if (that.onmessage) {
-                  that.onmessage(event);
-                }
+              log('received message from receiving window', event.data);
+              if (that.onmessage) {
+                that.onmessage(event);
               }
             }
-          }, false);
-          resolve();
+          };
+
+          log('tell receiving window to create data channel');
+          receivingWindow.postMessage('channel', '*');
+          window.addEventListener('message', readyMessageListener);
+
+          channel.send = function (message) {
+            if (channel.state !== 'connected') {
+              throw new _DOMException('InvalidStateError');
+            }
+            log('send message to receiving window', message);
+            receivingWindow.postMessage(message, '*');
+          };
+
+          channel.close = function () {
+            if (channel.state !== 'connected') {
+              return;
+            }
+            window.removeEventListener('messsage', messageListener);
+            channel.state = 'closed';
+            if (channel.onstatechange) {
+              channel.onstatechange();
+            }
+          };
         });
       };
 
-      this.open = function () {
-        if (openPromise) {
-          return openPromise;
-        }
-        openPromise = new Promise(function (resolve, reject) {
-          if (that.state === 'connected') {
-            resolve();
-          }
-          else {
-            openPromiseResolve = resolve;
-          }
-        });
-        return openPromise;
-      };
-
-      this.send = function (message) {
-        if (that.state !== 'connected') {
-          throw new _DOMException('InvalidStateError');
-        }
-        log('send message to receiving window', message);
-        receivingWindow.postMessage(message, '*');
-      };
-
-      this.close = function () {
-        if (that.state !== 'connected') {
-          return;
-        }
+      this.terminate = function () {
         log('close presentation window');
         receivingWindow.close();
-        that.state = 'closed';
-        queueTask(function () {
-          if (that.onstatechange) {
-            that.onstatechange();
-          }
-        });
       };
     };
 
@@ -857,7 +955,6 @@
                   return (win === event.source);
                 })) {
               controllingWindows.push(event.source);
-              event.source.postMessage('presentationready', '*');
               var controller = new WindowRemoteController(event.source);
               if (that.onincomingcontroller) {
                 that.onincomingcontroller(controller);
@@ -867,10 +964,7 @@
         };
 
         window.addEventListener('message', messageEventListener, false);
-        log('send "ispresentation" message to opener window ' +
-          'and wait for "presentation" message');
-        log('assume code is not running in a receiving window ' +
-          'in the meantime');
+        log('send "ispresentation" message to opener window');
         window.opener.postMessage('ispresentation', '*');
         window.addEventListener('unload', function () {
           log('receiving window is being closed');
@@ -900,10 +994,12 @@
    * around a specified connection. 
    *
    * @constructor
-   * @param {DataChannel} channel The data channel to use to exchange messages
-   * with the remote browsing context.
+   * @param {RemoteController|Display} remotePeer An object that represents the
+   * remote peer with wich the presentation connection is associated.
    */
-  var PresentationConnection = function (channel) {
+  var PresentationConnection = function (remotePeer) {
+    var that = this;
+
     /**
      * The presentation connection identifier
      *
@@ -937,8 +1033,66 @@
      * The underlying data channel
      *
      * @type {DataChannel}
+     * @private
      */
-    this.channel = channel;
+    var channel = null;
+
+
+    /**
+     * Non-standard method to create a data channel with the remote browsing
+     * context.
+     *
+     * The application that uses the Presentation API may override that method
+     * right after the call to start returns the PresentationConnection
+     * instance to associate the presentation connection with a data channel
+     * of its own.
+     *
+     * @function
+     * @return {Promise<DataChannel>} The promise to get a data communication
+     * channel ready for exchanging messages with the remote peer
+     */
+    this.createDataChannel = (function () {
+      var pendingPromise = null;
+      return function () {
+        if (pendingPromise) {
+          return pendingPromise();
+        }
+        if (channel) {
+          return new Promise(function (resolve, reject) {
+            resolve(channel);
+          });
+        }
+        pendingPromise = remotePeer.createDataChannel().then(function (dataChannel) {
+          pendingPromise = null;
+          channel = dataChannel;
+          channel.onstatechange = function () {
+            if (channel.state !== that.state) {
+              that.state = channel.state;
+              if (that.onstatechange) {
+                that.onstatechange();
+              }
+            }
+            if (channel.state !== 'connected') {
+              // Channel will have to be re-created
+              channel = null;
+            }
+          };
+          channel.onmessage = function (message) {
+            if (that.onmessage) {
+              that.onmessage(message);
+            }
+          };
+          if (that.state !== channel.state) {
+            that.state = channel.state;
+            if (that.onstatechange) {
+              that.onstatechange();
+            }
+          }
+        });
+        return pendingPromise;
+      };
+    })();
+
 
     /**
      * Sends a message through the communication channel.
@@ -950,7 +1104,7 @@
       if (!channel) {
         throw new _DOMException('InvalidStateError', 'Presentation connection not available, cannot send message');
       }
-      if (this.state === 'closed') {
+      if (this.state !== 'connected') {
         throw new _DOMException('InvalidStateError', 'Presentation connection is closed, cannot send message');
       }
       channel.send(message);
@@ -971,27 +1125,23 @@
     };
 
 
-    // Initialize bindings with underlying display/context
-    var that = this;
-    channel.onstatechange = function () {
-      if (channel.state !== that.state) {
-        that.state = channel.state;
+    /**
+     * Terminate the presentation connection
+     *
+     * @function
+     */
+    this.terminate = function () {
+      if (channel) {
+        channel.close();
+      }
+      remotePeer.terminate();
+      if (that.state !== 'terminated') {
+        that.state = 'terminated';
         if (that.onstatechange) {
           that.onstatechange();
         }
       }
     };
-    channel.onmessage = function (message) {
-      if (that.onmessage) {
-        that.onmessage(message);
-      }
-    };
-    if (this.state !== channel.state) {
-      this.state = channel.state;
-      if (this.onstatechange) {
-        this.onstatechange();
-      }
-    }
   };
 
 
@@ -1409,7 +1559,7 @@
         }
 
         queueTask(function () {
-          connection.channel.open().then(function () {
+          connection.createDataChannel().then(function () {
             queueTask(function () {
               setOfPresentations.forEach(function (presentation) {
                 if ((connection !== presentation.connection) &&
@@ -1566,23 +1716,21 @@
           mechanism.onincomingcontroller = function (controller) {
             log('new incoming presentation connection');
             connection = new PresentationConnection(controller);
-            connection.channel.open().then(function () {
+            connection.createDataChannel().then(function () {
               connection.id = 'connection-' + setOfIncomingPresentations.length;
               setOfIncomingPresentations.push({
                 url: null,
                 id: connection.id,
                 connection: connection
               });
-              queueTask(function () {
-                if (thisPresentationReceiver.onconnection) {
-                  thisPresentationReceiver.onconnection();
-                }
-                if (pendingResolveFunction) {
-                  pendingResolveFunction(connection);
-                  pendingResolveFunction = null;
-                  pendingPromise = null;
-                }
-              });
+              if (thisPresentationReceiver.onconnection) {
+                thisPresentationReceiver.onconnection();
+              }
+              if (pendingResolveFunction) {
+                pendingResolveFunction(connection);
+                pendingResolveFunction = null;
+                pendingPromise = null;
+              }
             });
           };
         });
@@ -1675,6 +1823,7 @@
     PresentationMechanism: PresentationMechanism,
     RemoteController: RemoteController,
     Display: Display,
+    DataChannel: DataChannel,
     registerPresentationMechanism: registerPresentationMechanism
   };
 }());
