@@ -298,7 +298,7 @@
      */
     this.getAvailableDisplays = function () {
       return new Promise(function (resolve, reject) {
-        resolve();
+        resolve([]);
       });
     };
 
@@ -600,8 +600,12 @@
 
       this.getAvailableDisplays = function () {
         return new Promise(function (resolve, reject) {
-          var display = new CastDisplay('A chromecast device');
-          resolve([display]);
+          if (castApiAvailable) {
+            resolve([new CastDisplay('A chromecast device')]);
+          }
+          else {
+            resolve([]);
+          }
         });
       };
 
@@ -963,7 +967,6 @@
         return;
       }
       channel.close();
-      channel = null;
       that.channel = null;
     };
 
@@ -1608,7 +1611,7 @@
    * Implements the main Presentation interface, exposed on navigator
    *
    */
-  var Presentation = function () {
+  var Presentation = {
     /**
      * The default presentation request that the user-agent should use
      * when user chooses to start the presentation from the user-agent
@@ -1616,15 +1619,15 @@
      *
      * @type {PresentationRequest}
      */
-    this.defaultRequest = null;
+    defaultRequest: null,
 
     /**
-     * The main receiving interface
+     * The main receiving interface
      * (only defined in the receiving browsing context)
      *
      * @type {PresentationReceiver}
      */
-    this.receiver = new PresentationReceiver();
+    receiver: new PresentationReceiver()
   };
 
 
@@ -1639,7 +1642,7 @@
    * @param {String} url URL of the receiver application
    * @param {String} id The Cast application ID associated with that URL
    */
-  Presentation.prototype.registerCastApplication = function (url, id) {
+  Presentation.registerCastApplication = function (url, id) {
     CastPresentationMechanism.registerCastApplication(url, id);
   };
 
@@ -1661,8 +1664,17 @@
 
   // Expose the Presentation API to the navigator object
   // (prefixed with W3C)
-  navigator.w3cPresentation = new Presentation();
+  navigator.w3cPresentation = Presentation;
 
   // Expose the PresentationRequest constructor to the window object
   window.w3cPresentationRequest = PresentationRequest;
+
+  // Also expose the interfaces and method required to extend the shim with
+  // new presentation mechanisms defined in some external JS file
+  navigator.w3cPresentation.extend = {
+    PresentationMechanism: PresentationMechanism,
+    RemoteController: RemoteController,
+    Display: Display,
+    registerPresentationMechanism: registerPresentationMechanism
+  };
 }());
