@@ -129,36 +129,24 @@
 
 
   /**********************************************************************
-  BrowsingContext internal interface
+  DataChannel / RemoteController / RemoteDisplay internal interfaces
   **********************************************************************/
 
   /**
-   * A remote browsing context with which one can exchange messages
-   *
-   * This base class is an empty shell
-   *
-   * Presentation mechanisms that expose browsing contexts must inherit
-   * from this base class.
+   * Base class for objects that can send and receive messages
    *
    * @constructor
    * @private
-   * @param {String} name A human-friendly name to identify the context
    */
-  var BrowsingContext = function (name) {
-    /**
-     * A human-friendly name for the browsing context
-     *
-     * @type {String}
-     */
-    this.name = name;
-
+  var DataChannel = function () {
+    var that = this;
 
     /**
      * The current connection state
      *
      * @type {String}
      */
-    this.state = 'disconnected';
+    this.state = 'closed';
 
 
     /**
@@ -170,6 +158,12 @@
      */
     this.open = function () {
       return new Promise(function (resolve, reject) {
+        if (that.state === 'closed') {
+          that.state = 'connected';
+          if (that.onstatechange) {
+            that.onstatechange();
+          }
+        }
         resolve();
       });
     };
@@ -200,29 +194,61 @@
      *
      * @function
      */
-    this.close = function () {};
+    this.close = function () {
+      if (that.state !== 'connected') {
+        return;
+      }
+      that.state = 'closed';
+      if (that.onstatechange) {
+        that.onstatechange();
+      }
+    };
   };
 
 
-
-
-  /**********************************************************************
-  ReceivingBrowsingContext internal interface
-  **********************************************************************/
-
   /**
-   * A remote receiving browsing context is a remote browsing context that may
-   * be navigated to a given URL.
+   * A remote controller represents a controlling browsing context as seen
+   * from the receiving browsing context.
+   *
+   * This base class is an empty shell and is actually the same thing as the
+   * DataChannel interface. It comes with a new name because DataChannel is
+   * also inherited by the RemoteDisplay interface and it would not make much
+   * sense for RemoteDisplay to inherit from RemoteController.
+   *
+   * Presentation mechanisms should provide their own RemoteController
+   * interface that inherits from this one.
    *
    * @constructor
    * @private
    * @param {String} name A human-friendly name to identify the context
    */
-  var ReceivingBrowsingContext = function (name) {
-    BrowsingContext.call(this, name);
+  var RemoteController = DataChannel;
+
+
+  /**
+   * Represents a display (or a class of displays in this implementation) as
+   * seen from the controlling browsing context. The display may be navigated
+   * to a given URL, in which case it can also be used to send messages to the
+   * receiving browsing context or receive messages from it.
+   *
+   * @constructor
+   * @private
+   * @param {String} name A human-friendly name to identify the context
+   */
+  var Display = function (name) {
+    DataChannel.call(this);
 
     /**
-     * Navigate the browsing context to the given URL
+     * A human-friendly name for the display
+     *
+     * @type {String}
+     */
+    this.name = name;
+
+
+    /**
+     * Navigate the display to the given URL, thus creating a receiving
+     * browsing context.
      *
      * @function
      * @param {String} url The URL to navigate to
@@ -266,12 +292,9 @@
      * Compute the list of available presentation displays that the user may
      * select to launch a presentation.
      *
-     * Internally, these "displays" are represented as receiving browsing
-     * contexts.
-     *
      * @function
-     * @return {Promise<Array(ReceivingBrowsingContext)} The promise to get the
-     * current list of available presentation displays
+     * @return {Promise<Array(Display)} The promise to get the current list of
+     * available presentation displays
      */
     this.getAvailableDisplays = function () {
       return new Promise(function (resolve, reject) {
@@ -289,21 +312,21 @@
      *
      * @function
      */
-    this.monitorIncomingContexts = function () {
+    this.monitorIncomingControllers = function () {
       queueTask(function () {
       });
     };
 
 
     /**
-     * Event handler called when an incoming browsing context is detected
+     * Event handler called when an incoming controller is detected
      *
-     * The "context" attribute of the event that is given to the handler is set
-     * to the presentation context that connected to this browsing context
+     * The "controller" attribute of the event that is given to the handler is set
+     * to the remote controller that connected to this browsing context
      *
      * @type {EventHandler}
      */
-    this.onincomingcontext = null; 
+    this.onincomingcontroller = null; 
   };
 
 
@@ -366,9 +389,8 @@
     var castApplications = {};
 
 
-    var CastBrowsingContext = function (name, castReceiverManager) {
-      BrowsingContext.call(this, name);
-      this.state = 'connected';
+    var CastRemoteController = function (castReceiverManager) {
+      RemoteController.call(this);
 
       var that = this;
       var customMessageBus = castReceiverManager.getCastMessageBus(
@@ -383,7 +405,7 @@
 
       this.send = function (message) {
         if (that.state !== 'connected') {
-          return;
+          throw new _DOMException('InvalidStateError');
         }
         log('send message to Cast sender', message);
         customMessageBus.broadcast(message);
@@ -395,7 +417,7 @@
         }
         log('stop Cast receiver manager');
         castReceiverManager.stop();
-        that.state = 'disconnected';
+        that.state = 'closed';
         if (that.onstatechange) {
           that.onstatechange();
         }
@@ -403,9 +425,9 @@
     };
 
 
-    var CastReceivingBrowsingContext = function (name) {
-      ReceivingBrowsingContext.call(this, name);
-      this.state = 'disconnected';
+    var CastDisplay = function (name) {
+      Display.call(this, name);
+      this.state = 'closed';
 
       var castSession = null;
       var that = this;
@@ -519,7 +541,7 @@
           }
 
           castSession.addUpdateListener(function (isAlive) {
-            that.state = isAlive ? 'connected' : 'disconnected';
+            that.state = isAlive ? 'connected' : 'closed';
             log('received Cast session state update', 'isAlive=' + isAlive);
             if (that.onstatechange) {
               that.onstatechange();
@@ -545,7 +567,7 @@
 
       this.send = function (message) {
         if (that.state !== 'connected') {
-          return;
+          throw new _DOMException('InvalidStateError');
         }
         log('send message to Cast receiver', message);
         var namespace = castSession.namespaces[0];
@@ -559,7 +581,7 @@
         }
         log('close Cast session');
         castSession.stop();
-        that.state = 'disconnected';
+        that.state = 'closed';
         if (that.onstatechange) {
           that.onstatechange();
         }
@@ -578,12 +600,12 @@
 
       this.getAvailableDisplays = function () {
         return new Promise(function (resolve, reject) {
-          var display = new CastReceivingBrowsingContext('A chromecast device');
+          var display = new CastDisplay('A chromecast device');
           resolve([display]);
         });
       };
 
-      this.monitorIncomingContexts = function () {
+      this.monitorIncomingControllers = function () {
         // Detect whether the code is running on a Google Cast device. If it is,
         // it means the code is used within a Receiver application and was
         // launched as the result of a call to:
@@ -604,12 +626,12 @@
         log('code is running on a Google Cast device',
           'start Google Cast receiver manager');
         var castReceiverManager = cast.receiver.CastReceiverManager.getInstance();
-        var context = new CastBrowsingContext('controlling Cast extension', castReceiverManager);
+        var controller = new CastRemoteController(castReceiverManager);
         castReceiverManager.start();
         castReceiverManager.onReady = function () {
           log('Google Cast receiver manager started');
-          if (that.onincomingcontext) {
-            that.onincomingcontext(context);
+          if (that.onincomingcontroller) {
+            that.onincomingcontroller(controller);
           }
         };
       };
@@ -652,16 +674,14 @@
    */
   var WindowPresentationMechanism = (function () {
     /**
-     * Remote window controlling browsing context
+     * Remote window controller
      *
      * @constructor
      * @private
-     * @param {String} name Human-friendly name for that display
      * @param {Window} source Reference to the controlling window
      */
-    var WindowBrowsingContext = function (name, source) {
-      BrowsingContext.call(this, name);
-      this.state = 'connected';
+    var WindowRemoteController = function (source) {
+      RemoteController.call(this);
 
       var that = this;
       this.send = function (message) {
@@ -683,15 +703,14 @@
 
 
     /**
-     * Remote window receiving browsing context that may be navigated to
-     * some URL
+     * Remote window display that may be navigated to some URL
      *
      * @constructor
      * @private
      * @param {String} name Human-friendly name for that display
      */
-    var WindowReceivingBrowsingContext = function (name) {
-      ReceivingBrowsingContext.call(this, name);
+    var WindowDisplay = function (name) {
+      Display.call(this, name);
 
       var receivingWindow = null;
       var openPromise = null;
@@ -709,7 +728,7 @@
             return;
           }
           window.addEventListener('message', function (event) {
-            if (that.state === 'disconnected') {
+            if (that.state === 'closed') {
               if ((event.source === receivingWindow) &&
                   (event.data === 'ispresentation')) {
                 log('received "is this a presentation connection?" message ' +
@@ -738,7 +757,7 @@
               if ((event.source === receivingWindow) &&
                   (event.data === 'receivershutdown')) {
                 log('received shut down message from receiving side', 'disconnect');
-                that.state = 'disconnected';
+                that.state = 'closed';
                 reconnectionNeeded = true;
                 if (openPromiseReject) {
                   openPromiseReject();
@@ -792,7 +811,7 @@
         }
         log('close presentation window');
         receivingWindow.close();
-        that.state = 'disconnected';
+        that.state = 'closed';
         queueTask(function () {
           if (that.onstatechange) {
             that.onstatechange();
@@ -811,12 +830,12 @@
 
       this.getAvailableDisplays = function () {
         return new Promise(function (resolve, reject) {
-          var display = new WindowReceivingBrowsingContext('A beautiful window on your screen');
+          var display = new WindowDisplay('A beautiful window on your screen');
           resolve([display]);
         });
       };
 
-      this.monitorIncomingContexts = function () {
+      this.monitorIncomingControllers = function () {
         // No window opener? The code does not run a receiver app.
         if (!window.opener) {
           log('code is not running in a receiving window');
@@ -826,21 +845,18 @@
         var messageEventListener = function (event) {
           // Note that the event source window is not checked to allow multiple
           // controlling windows
-          var newContext = null;
           if (event.data === 'presentation') {
             log('received "presentation" message from some window');
             log('code is running in a receiving window');
-            if (that.onincomingcontext &&
+            if (that.onincomingcontroller &&
                 !controllingWindows.some(function (win) {
-                return (win === event.source);
-              })) {
+                  return (win === event.source);
+                })) {
               controllingWindows.push(event.source);
               event.source.postMessage('presentationready', '*');
-              var context = new WindowBrowsingContext(
-                'controlling window',
-                event.source);
-              if (that.onincomingcontext) {
-                that.onincomingcontext(context);
+              var controller = new WindowRemoteController(event.source);
+              if (that.onincomingcontroller) {
+                that.onincomingcontroller(controller);
               }
             }
           }
@@ -880,14 +896,10 @@
    * around a specified connection. 
    *
    * @constructor
-   * @param {BrowsingContext} display The display with which the user is
-   * effectively communicating. The display is represented internally as a
-   * remote browsing context. On the controlling side, this remote browsing
-   * context may be navigated to a given URL. On the receiving side, the
-   * remote browsing context can only be used to exchange messages with the
-   * other end.
+   * @param {DataChannel} channel The data channel to use to exchange messages
+   * with the remote browsing context.
    */
-  var PresentationConnection = function (display) {
+  var PresentationConnection = function (channel) {
     /**
      * The presentation connection identifier
      *
@@ -900,7 +912,7 @@
      *
      * @type {String}
      */
-    this.state = 'disconnected';
+    this.state = 'closed';
 
     /**
      * Event handler called when connection state changes
@@ -918,11 +930,11 @@
     this.onmessage = null;
 
     /**
-     * The underlying display (remote browsing context)
+     * The underlying data channel
      *
-     * @type {BrowsingContext}
+     * @type {DataChannel}
      */
-    this.display = display;
+    this.channel = channel;
 
     /**
      * Sends a message through the communication channel.
@@ -931,13 +943,13 @@
      * @param {*} message
      */
     this.send = function (message) {
-      if (!display) {
+      if (!channel) {
         throw new _DOMException('InvalidStateError', 'Presentation connection not available, cannot send message');
       }
-      if (this.state === 'disconnected') {
-        throw new _DOMException('InvalidStateError', 'Presentation connection is disconnected, cannot send message');
+      if (this.state === 'closed') {
+        throw new _DOMException('InvalidStateError', 'Presentation connection is closed, cannot send message');
       }
-      display.send(message);
+      channel.send(message);
     };
 
 
@@ -947,29 +959,32 @@
      * @function
      */
     this.close = function () {
-      if (!display) {
+      if (!channel) {
         return;
       }
-      display.close();
-      display = null;
+      channel.close();
+      channel = null;
+      that.channel = null;
     };
 
 
     // Initialize bindings with underlying display/context
     var that = this;
-    display.onstatechange = function () {
-      that.state = display.state;
-      if (that.onstatechange) {
-        that.onstatechange();
+    channel.onstatechange = function () {
+      if (channel.state !== that.state) {
+        that.state = channel.state;
+        if (that.onstatechange) {
+          that.onstatechange();
+        }
       }
     };
-    display.onmessage = function (message) {
+    channel.onmessage = function (message) {
       if (that.onmessage) {
         that.onmessage(message);
       }
     };
-    if (this.state !== display.state) {
-      this.state = display.state;
+    if (this.state !== channel.state) {
+      this.state = channel.state;
       if (this.onstatechange) {
         this.onstatechange();
       }
@@ -1072,7 +1087,7 @@
      * The set of available presentation displays
      *
      * @private
-     * @type {Array(ReceivingBrowsingContext)}
+     * @type {Array(Display)}
      */
     var listOfAvailablePresentationDisplays = [];
 
@@ -1127,7 +1142,7 @@
             }
           })
           .then(requestUserToSelectPresentationDisplay)
-          .then(navigateReceivingBrowserToPresentationUrl)
+          .then(navigateDisplayToPresentationUrl)
           .then(function (display) {
             var connection = createPresentationConnection(display);
             establishPresentationConnection(connection);
@@ -1314,18 +1329,18 @@
 
 
       /**
-       * Create a new browsing context on the given display and navigate to
-       * the requested URL
+       * Create a new receiving browsing context on the given display and
+       * navigate to the requested URL
        *
        * @function
        * @private
-       * @param {} display The user-selected display
+       * @param {Display} display The user-selected display
        * @return {Promise} The promise that the display will have nagivated to
        * the requested URL. The promise is rejected with a DOMException named
        * "OperationError" if the presentation display cannot be navigated to the
        * requested URL.
        */ 
-      var navigateReceivingBrowserToPresentationUrl = function (display) {
+      var navigateDisplayToPresentationUrl = function (display) {
         return new Promise(function (resolve, reject) {
           queueTask(function () {
             log('navigate display to requested url');
@@ -1352,7 +1367,7 @@
       var createPresentationConnection = function (display) {
         var connection = new PresentationConnection(display);
         connection.id = getNewValidPresentationConnectionIdentifier();
-        connection.state = 'disconnected';
+        connection.state = 'closed';
         setOfPresentations.push({
           url: url,
           id: connection.id,
@@ -1391,7 +1406,7 @@
         }
 
         queueTask(function () {
-          connection.display.open().then(function () {
+          connection.channel.open().then(function () {
             queueTask(function () {
               setOfPresentations.forEach(function (presentation) {
                 if ((connection !== presentation.connection) &&
@@ -1441,7 +1456,7 @@
      * Retrieve the first connected presentation connection as it becomes
      * available
      *
-     * The function waits indefinitely if not controlling browsing context
+     * The function waits indefinitely if no controlling browsing context
      * connects to this connection.
      *
      * @function
@@ -1453,7 +1468,7 @@
      *   The promise is never rejected but may hang indefinitely if no
      *   controlling application ever connects to this application.
      *   Note that the presentation connection that gets returned may be in a
-     *   "disconnected" state if controlling side has disconnected in the
+     *   "closed" state if controlling side has closed in the
      *   meantime.
      */
     this.getConnection = function () {
@@ -1544,11 +1559,11 @@
       queueTask(function () {
         var connection = null;
         registeredMechanisms.forEach(function (mechanism) {
-          mechanism.monitorIncomingContexts();
-          mechanism.onincomingcontext = function (context) {
+          mechanism.monitorIncomingControllers();
+          mechanism.onincomingcontroller = function (controller) {
             log('new incoming presentation connection');
-            connection = new PresentationConnection(context);
-            connection.display.open().then(function () {
+            connection = new PresentationConnection(controller);
+            connection.channel.open().then(function () {
               connection.id = 'connection-' + setOfIncomingPresentations.length;
               setOfIncomingPresentations.push({
                 url: null,
