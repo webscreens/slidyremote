@@ -423,18 +423,6 @@
 
 
     /**
-     * A data channel
-     *
-     * @function
-     */
-    var CastDataChannel = function () {
-      DataChannel.call(this);
-
-
-    };
-
-
-    /**
      * Remote controller from the perspective of the Cast device
      *
      * @constructor
@@ -1820,6 +1808,7 @@
   // Also expose the interfaces and method required to extend the shim with
   // new presentation mechanisms defined in some external JS file
   navigator.w3cPresentation.extend = {
+    _DOMException: _DOMException,
     PresentationMechanism: PresentationMechanism,
     RemoteController: RemoteController,
     Display: Display,
